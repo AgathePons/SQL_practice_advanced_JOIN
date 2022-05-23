@@ -1,77 +1,349 @@
-# Les besoins d'un fou d'agrumes
+# SQL advanced JOIN requests
 
-Les jointures, c'est sympa; Mais alors les sous-requêtes et cette notion de table virtuelle... :boom::dizzy_face:
+Just practicing SQL.
 
-Pas de panique ! On va s'entraîner un peu sur une base de données qui recense les plantations d'une orangeraie. Ouais, rien que ça.
+## MCD
 
-## Le modèle
+**[Mocodo](http://mocodo.wingi.net/)** MCD:
+
+```sql
+FAMILY: family name
+DF1, 1N FAMILY, 11 SPECIES
+SPECIES: scientific name, common name
+DF2, 1N SPECIES, 11 VARIETY
+VARIETY: cultivar name, bitterness, juiciness
+
+FIELD: field name, location
+DF3, 1N FIELD, _11 ROW
+ROW: number
+IS PLANTED IN, 11 ROW, 1N VARIETY
+```
 
 ![MCD](./docs/orangeraie.svg)
 
-Beaucoup de relations mais aucune complexe et que des petites tables (en termes de nombre de colonnes) : parfait pour s'entraîner :ok_hand:
 
-Côté _géographie_, la répartition des informations est très simple :
-- La table `field` représente les différentes plantations (= les différentes zones géographiques)
-- La table `row` recense les rangs de chaque plantation, sachant que sur un même rang, on ne plante qu'un cultivar (kézako ? je vais y venir)
+## Joined requests
 
-Côté _agrumes_, on ne plaisante pas sur la classification. Dans une orangeraie, on ne fait pas pousser que des oranges, loin de là. On fait pousser des cultivars, c'est-à-dire des variétés d'une espèce. Et pour que ça parle aux clients, on classe les espèces par famille :
-- La table `family` contient donc 6 grandes familles d'agrumes communément admises
-- La table `species` recense les espèces cultivées dans l'orangeraie
-- La table `variety` précise les cultivars de chaque espèce (certaines n'en ont qu'un seul de cultivé ici)
+### Species common and scientific name, whith family
 
-Tout ça nous donne une base qui assure la traçabilité de l'exploitation. Mais personne à l'orangeraie ne sait écrire de SQL et faut bien avouer que ces tables, lues séparément, c'est pas le kif.
+```sql
+SELECT species.id AS specy_id, species.scientific_name AS specy_scientific_name, species AS specy_common_name, family.name AS family
+FROM species
+JOIN family ON species.family_id=family.id;
+```
 
-On va donc écrire une poignée de requêtes que les intéressés n'auront plus qu'à exécuter pour avoir les infos qu'ils recherchaient. Dans un fichier `requetes.sql` à côté de ce readme, tout simplement.
+### Species with at least one variety which has bitter = 5
 
-## Quelques sous-requêtes
+```sql
+SELECT species.id AS specy_id, species.scientific_name AS specy_scientific_name, species AS specy_common_name, family.name AS family
+FROM species
+JOIN family ON species.family_id=family.id
+JOIN variety ON species.id=variety.species_id
+WHERE variety.bitterness=5;
+```
 
-- Les clients de l'orangeraie ont tendance à dire que leurs clémentines ne sont pas juteuses :angry: Mais qu'est-ce qu'ils en savent, hein, d'abord ? Bon, on devrait bien pouvoir écrire une requête pour déterminer une bonne fois pour toute quelles familles ne contiennent aucune **espèce** ayant une jutosité **moyenne** supérieure à la moyenne (2.5, vu qu'on les note de 0 à 5).
+Without doublon
 
-<details>
-<summary>Un peu d'aide ?</summary>
-Procédons par étape :
+```sql
+SELECT DISTINCT species.id AS specy_id, species.scientific_name AS specy_scientific_name, species AS specy_common_name, family.name AS family
+FROM species
+JOIN family ON species.family_id=family.id
+JOIN variety ON species.id=variety.species_id
+WHERE variety.bitterness=5;
+```
 
-1. Calculer la jutosité moyenne d'une espèce, c'est à dire la jutosité moyenne des cultivars groupés par espèce
-2. Filtrer ces moyennes pour ne récupérer que celles supérieures à 2.5
-3. Ne conserver que les _id_ de cette requête => on a notre première sous-requête
-4. Sélectionner les espèces dont l'_id_ se trouve dans le résultat de cette sous-requête
-5. Ne conserver que les _family_id_ de cette requête => on a une deuxième sous-requête
-6. Sélectionner le nom de toute famille dont l'id ne se trouverait pas dans le résultat de cette sous-requête => voilà la liste des familles _non juteuses_
+On peut aussi l'écrire
 
-<details>
-<summary>Spoiler</summary>
+```sql
+SELECT DISTINCT ON (species.id) species.id, species.scientific_name AS specy_scientific_name, species AS specy_common_name, family.name AS family
+FROM species
+JOIN family ON species.family_id=family.id
+JOIN variety ON species.id=variety.species_id
+WHERE variety.bitterness=5;
+```
 
-Ah bon ben ok, elles sont pas juteuses, les clémentines de l'orangeraie. :pray:
-</details>
-</details>
+**Other solution**
 
-- Demande urgente d'un gestionnaire : il lui faudrait la liste des plantations qui produisent de la mandarine, peu importe l'espèce. Même si ce n'est que sur un rang dans une petite plantation isolée, il faut qu'elle y figure.
+```sql
+SELECT species.id, scientific_name, common_name
+FROM variety
+INNER JOIN species ON species.id=variety.species_id AND variety.bitterness = 5;
+```
 
-<details>
-<summary>Un peu d'aide ?</summary>
-On a 2 infos à croiser ici et elles se trouvent aux 2 extrémités du schéma :grimacing:
+Without doublon
 
-1. Retrouvons l'id correspondant à la famille 'mandarine', ce sera notre première sous-requête
-2. À partir de cet id, parcourons successivement les espèces puis les cultivars correspondants, en retournant à chaque fois un lot d'id
-3. Ce lot d'id va nous permettre de repérer les rangées qui en font pousser
-4. Mais ce n'est pas l'id des rangées qui va nous intéresser ici, mais le _field_id_, car on veut identifier les plantations concernées
-5. Maintenant qu'on a ces id, on peut récupérer les noms et localisations correspondantes.
+```sql
+SELECT DISTINCT species.id, scientific_name, common_name
+FROM variety
+INNER JOIN species ON species.id=variety.species_id AND variety.bitterness = 5;
+```
 
-Pfiou, 5 niveaux de requêtes imbriquées :sweat_smile:
-</details>
+## Where are the vinegar variety rows?
 
-## Quelques jointures
+```sql
+SELECT field.name AS field, row.label AS row, variety.cultivar
+FROM variety
+JOIN row ON variety.id=row.variety_id
+JOIN field ON field.id=row.field_id
+WHERE bitterness=5;
+```
 
-- Commençons simplement, affichons le nom scientifique, le nom commun et la famille de toutes les espèces.
-- Affichons maintenant les espèces pour lesquelles il existe au moins une variété ayant une amertume de 5 (sur 5, autant dire que ça ne sert qu'à faire du vinaigre)
-- Ah, il y a un doublon dans la requête précédente, c'est moche. La même sans doublon, siouplait :pray:
-- Et ils sont plantés où, ces _cultivars à vinaigre_ ? Affichons le nom de la plantation et le libellé des rangées concernées (une ligne par rangée)
-- Aïe, ça fait plein de lignes :see_no_evil: J'ai entendu parler d'une fonction `array_agg` qui permet de représenter un ensemble de valeurs sous forme de tableau, on pourrait peut-être grouper par plantation et ne présenter qu'une ligne par plantation ?
+With better view, thanks to array_agg
 
-## L'un ou l'autre
+```sql
+SELECT field.name AS field, array_agg(row.label) AS rows
+FROM variety
+JOIN row ON variety.id=row.variety_id
+JOIN field ON field.id=row.field_id
+WHERE bitterness=5
+GROUP BY field.name;
+```
 
-Ce qu'on peut écrire avec des sous-requêtes, on peut l'écrire avec des jointures. Et vice versa. Mais pas tout le temps. Et on peut joindre des _vraies_ tables à des sous-requêtes. Tout comme des sous-requêtes peuvent inclure des jointures :dizzy_face:
+With common name
 
-Mais sauf si c'est vraiment nécessaire de coupler les deux, on préférera toujours l'un ou l'autre. Ne serait-ce que pour la lisibilité.
+```sql
+SELECT field.name, 
+	ARRAY_AGG (species.common_name || ' ' || row.label) infos
+FROM variety
+INNER JOIN species ON species.id=variety.species_id AND variety.bitterness = 5
+INNER JOIN row ON row.variety_id=variety.id
+INNER JOIN field ON field.id=row.field_id
+GROUP BY field.name
+ORDER BY field.name;
+```
 
-En parlant de lisibilité, je vous propose de réécrire la requête des plantations de mandarine avec des jointures. Pour voir si c'est plus lisible :slightly_smiling_face:
+And with cultivars in the array
+
+```sql
+SELECT field.name AS field, array_agg(row.label ORDER BY row.label::integer) AS rows, array_agg(DISTINCT variety.cultivar) as cultivars
+FROM variety
+JOIN row ON variety.id=row.variety_id
+JOIN field ON field.id=row.field_id
+WHERE bitterness=5
+GROUP BY field.name;
+```
+
+With row label order by ascendant :
+We cast the value of the order by in `integer`, but only in the `ORDER BY`, because we do **not** want to modify the original data
+
+```sql
+SELECT field.name AS field, array_agg(row.label ORDER BY row.label::integer) AS rows, array_agg(DISTINCT variety.cultivar) as cultivars
+FROM variety
+JOIN row ON variety.id=row.variety_id
+JOIN field ON field.id=row.field_id
+WHERE bitterness=5
+GROUP BY field.name;
+```
+
+## nested requests
+
+### Family which has any specy with average juiciness superior to 2.5
+
+**1**
+
+```sql
+SELECT species_id, ROUND(AVG(juiciness), 2)
+FROM variety
+GROUP BY species_id;
+```
+
+**1.1**
+
+```sql
+SELECT species_id, ROUND(AVG(juiciness), 2) AS juiciness
+FROM variety
+GROUP BY species_id
+HAVING AVG(juiciness) > 2.5;
+```
+
+**1.2**
+
+```sql
+SELECT species_id
+FROM variety
+GROUP BY species_id
+HAVING AVG(juiciness) > 2.5;
+```
+
+**2.1**
+
+```sql
+SELECT * FROM species
+WHERE id IN (
+	SELECT species_id
+  FROM variety
+  GROUP BY species_id
+  HAVING AVG(juiciness) > 2.5
+);
+```
+
+or
+
+```sql
+SELECT * FROM species
+WHERE id = ANY (
+	SELECT species_id
+  FROM variety
+  GROUP BY species_id
+  HAVING AVG(juiciness) > 2.5
+);
+```
+
+**2.2**
+
+```sql
+SELECT family_id FROM species
+WHERE id IN (
+	SELECT species_id
+  FROM variety
+  GROUP BY species_id
+  HAVING AVG(juiciness) > 2.5
+);
+```
+
+**3**
+
+```sql
+SELECT name
+FROM family
+WHERE id NOT IN (
+	SELECT family_id FROM species
+	WHERE id IN (
+		SELECT species_id
+  		FROM variety
+  		GROUP BY species_id
+  		HAVING AVG(juiciness) > 2.5
+	)
+);
+```
+
+or
+Without `NOT IN`, which is *don't do this* by postgres.  
+we use `id <> ALL` : id has to be different of all values (valu1 and value2 and vamue3...).  
+(if we use `id <> IN` : id has to be different of value1 or value2 or value3...)
+
+```sql
+SELECT name
+FROM family
+WHERE id <> ALL (
+	SELECT family_id FROM species
+	WHERE id = ANY (
+		SELECT species_id
+  		FROM variety
+  		GROUP BY species_id
+  		HAVING AVG(juiciness) > 2.5
+	)
+);
+```
+
+### Fields which has mandarine (even just one row)
+
+**1**
+
+```sql
+SELECT id FROM species
+WHERE family_id=(
+	SELECT id FROM family
+	WHERE name='mandarine'
+);
+```
+
+**2**
+
+```sql
+SELECT id FROM variety
+WHERE species_id = ANY(
+	SELECT id FROM species
+	WHERE family_id=(
+		SELECT id FROM family
+		WHERE name='mandarine'
+	)
+);
+```
+
+**3**
+
+```sql
+SELECT field_id FROM row
+WHERE variety_id=ANY(
+	SELECT id FROM variety
+	WHERE species_id = ANY(
+		SELECT id FROM species
+		WHERE family_id=(
+			SELECT id FROM family
+			WHERE name='mandarine'
+		)
+	)
+);
+```
+
+**4**
+
+```sql
+SELECT name FROM field
+WHERE id = ANY(
+	SELECT field_id FROM row
+	WHERE variety_id = ANY(
+		SELECT id FROM variety
+		WHERE species_id = ANY(
+			SELECT id FROM species
+			WHERE family_id=(
+				SELECT id FROM family
+				WHERE name='mandarine'
+			)
+		)
+	)
+);
+```
+
+#### For better readinf comfort, we can create temporary table and write:
+
+**1**
+
+```sql
+WITH mandarine_family AS (
+	SELECT id FROM family WHERE name='mandarine'
+),
+mandarine_species AS (
+	SELECT species.id FROM species
+	JOIN mandarine_family ON species.family_id=mandarine_family.id
+)
+SELECT * FROM mandarine_species;
+```
+
+**2**
+
+```sql
+WITH mandarine_family AS (
+    SELECT id FROM family WHERE name='mandarine'
+),
+mandarine_species AS (
+    SELECT species.id FROM species
+    JOIN mandarine_family ON species.family_id=mandarine_family.id
+),
+mandarine_cultivar AS (
+    SELECT variety.id FROM variety
+    JOIN mandarine_species ON mandarine_species.id=variety.species_id
+),
+mandarine_rows AS (
+    SELECT DISTINCT field_id FROM row
+    JOIN mandarine_cultivar ON mandarine_cultivar.id=row.variety_id
+)
+
+SELECT field.* FROM field
+JOIN mandarine_rows ON mandarine_rows.field_id=field.id;
+```
+
+## TIPS
+
+On peut faire la manip inverse du array_agg
+
+```sql
+SELECT UNNEST(ARRAY['1', '2', '3']);
+```
+
+On peut voir le type d'une valeur
+
+```sql
+SELECT pg_typeof(null);
+```
