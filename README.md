@@ -52,7 +52,7 @@ JOIN variety ON species.id=variety.species_id
 WHERE variety.bitterness=5;
 ```
 
-On peut aussi l'écrire
+We can also write
 
 ```sql
 SELECT DISTINCT ON (species.id) species.id, species.scientific_name AS specy_scientific_name, species AS specy_common_name, family.name AS family
